@@ -1,75 +1,41 @@
 import { useEffect, useState } from "react";
 import {
-  config,
-  decodificarJwt,
   estaExpirado,
   getAccessToken,
-  getIdToken,
+  getAccessTokenClaims,
+  getGroups,
+  getScopes,
   getTokens,
   login,
   logout,
   procesarRetorno,
   validarConfiguracion,
 } from "./auth";
-import {
-  obtenerIndicadores,
-  obtenerIndicadoresPublicos,
-  obtenerUserInfo,
-  obtenerUsuarioCognito,
-} from "./api";
-
-const acciones = [
-  { texto: "/oauth2/userInfo", ejecutar: obtenerUserInfo },
-  { texto: "Cognito GetUser", ejecutar: obtenerUsuarioCognito },
-  { texto: "/datos con token", ejecutar: () => obtenerIndicadores(true) },
-  { texto: "/datos sin token", ejecutar: () => obtenerIndicadores(false), advertencia: true },
-  { texto: "/publico/datos", ejecutar: obtenerIndicadoresPublicos },
-];
-
-function formatearCuerpo(cuerpo) {
-  return typeof cuerpo === "string" ? cuerpo : JSON.stringify(cuerpo, null, 2);
-}
-
-function Resultado({ resultado }) {
-  if (!resultado) {
-    return null;
-  }
-
-  const esperado = resultado.descripcion === "/datos sin token" && resultado.status === 401;
-  const clase = esperado ? "resultado esperado" : resultado.ok ? "resultado exito" : "resultado fallo";
-  const etiqueta = esperado ? "Esperado" : resultado.ok ? "Correcto" : "Fallo";
-
-  return (
-    <article className={clase}>
-      <div className="resultado-cabecera">
-        <strong>{resultado.descripcion}</strong>
-        <span>{etiqueta}</span>
-      </div>
-      <p>HTTP {resultado.status ?? "sin respuesta"}</p>
-      {esperado && <p>El 401 confirma que el authorizer protege esta ruta sin token.</p>}
-      <pre>{formatearCuerpo(resultado.cuerpo)}</pre>
-    </article>
-  );
-}
-
-function Claims({ titulo, token }) {
-  return (
-    <details className="claims">
-      <summary>{titulo}</summary>
-      <pre>{formatearCuerpo(decodificarJwt(token))}</pre>
-    </details>
-  );
-}
+import SolicitanteView from "./components/SolicitanteView";
+import AprobadorView from "./components/AprobadorView";
+import TokenClaims from "./components/TokenClaims";
 
 export default function App() {
   const [tokens, setTokens] = useState(getTokens());
   const [error, setError] = useState("");
-  const [cargando, setCargando] = useState(false);
-  const [resultados, setResultados] = useState({});
   const configuracionFaltante = validarConfiguracion();
   const accessToken = tokens?.access_token || getAccessToken();
   const autenticado = Boolean(accessToken && !estaExpirado(accessToken));
   const tokenExpirado = Boolean(accessToken && estaExpirado(accessToken));
+  const claims = autenticado ? getAccessTokenClaims() : null;
+  const grupos = autenticado ? getGroups() : [];
+  const scopes = autenticado ? getScopes() : [];
+  const puedeSolicitar = grupos.includes("solicitantes");
+  const puedeAprobar = grupos.includes("aprobadores");
+  const [vista, setVista] = useState(puedeSolicitar ? "solicitante" : "aprobador");
+
+  useEffect(() => {
+    if (puedeSolicitar && !puedeAprobar) {
+      setVista("solicitante");
+    } else if (!puedeSolicitar && puedeAprobar) {
+      setVista("aprobador");
+    }
+  }, [puedeSolicitar, puedeAprobar]);
 
   useEffect(() => {
     let activo = true;
@@ -89,14 +55,6 @@ export default function App() {
       activo = false;
     };
   }, []);
-
-  async function ejecutarAccion(accion) {
-    setCargando(accion.texto);
-    setError("");
-    const resultado = await accion.ejecutar();
-    setResultados((anteriores) => ({ ...anteriores, [accion.texto]: resultado }));
-    setCargando("");
-  }
 
   async function iniciarSesion() {
     try {
@@ -119,18 +77,16 @@ export default function App() {
   if (!autenticado) {
     return (
       <main className="contenedor inicio">
-        <p className="eyebrow">Laboratorio Cloud Native</p>
-        <h1>DSY1107 · Identidad con Cognito</h1>
-        <p className="intro">
-          Esta aplicacion demuestra OAuth2 Authorization Code con PKCE y el acceso a una API protegida por Cognito.
-        </p>
+        <p className="eyebrow">Pedidos360</p>
+        <h1>Pedidos360</h1>
+        <p className="intro">Gestión segura de solicitudes</p>
         {tokenExpirado && (
           <div className="alerta advertencia">
             El access token expiro. Inicia sesion nuevamente para obtener tokens validos.
           </div>
         )}
         {error && <div className="alerta error">{error}</div>}
-        <button type="button" onClick={iniciarSesion}>Iniciar sesión con Cognito</button>
+        <button type="button" onClick={iniciarSesion}>Iniciar sesión</button>
       </main>
     );
   }
@@ -139,42 +95,40 @@ export default function App() {
     <main className="contenedor">
       <header className="encabezado">
         <div>
-          <p className="eyebrow">Laboratorio Cloud Native</p>
-          <h1>Sesión iniciada</h1>
-          <p className="intro">Prueba los servicios de identidad y las rutas publicas y protegidas.</p>
+          <p className="eyebrow">Gestión segura de solicitudes</p>
+          <h1>Pedidos360</h1>
+          <p className="intro">{claims?.email || claims?.username || claims?.sub || "Usuario autenticado"}</p>
         </div>
         <button type="button" className="boton peligro" onClick={logout}>Cerrar sesión</button>
       </header>
 
       {error && <div className="alerta error">{error}</div>}
 
-      <section className="panel">
-        <h2>Claims de los tokens</h2>
-        <Claims titulo="ID Token" token={getIdToken()} />
-        <Claims titulo="Access Token" token={accessToken} />
+      <section className="panel resumen-seguridad">
+        <div>
+          <span className="etiqueta">Grupos</span>
+          <strong>{grupos.length ? grupos.join(", ") : "Sin grupos"}</strong>
+        </div>
+        <div>
+          <span className="etiqueta">Scopes</span>
+          <strong>{scopes.length ? scopes.join(", ") : "Sin scopes"}</strong>
+        </div>
       </section>
 
-      <section className="panel">
-        <h2>Pruebas de API</h2>
-        <div className="acciones">
-          {acciones.map((accion) => (
-            <button
-              type="button"
-              key={accion.texto}
-              className={accion.advertencia ? "boton advertencia" : "boton"}
-              onClick={() => ejecutarAccion(accion)}
-              disabled={Boolean(cargando)}
-            >
-              {cargando === accion.texto ? "Cargando..." : accion.texto}
-            </button>
-          ))}
-        </div>
-        <div className="resultados">
-          {acciones.map((accion) => (
-            <Resultado key={accion.texto} resultado={resultados[accion.texto]} />
-          ))}
-        </div>
-      </section>
+      <TokenClaims claims={claims} />
+
+      {puedeSolicitar && puedeAprobar && (
+        <nav className="pestanas" aria-label="Vistas de solicitudes">
+          <button className={vista === "solicitante" ? "pestana activa" : "pestana"} onClick={() => setVista("solicitante")} type="button">Mis solicitudes</button>
+          <button className={vista === "aprobador" ? "pestana activa" : "pestana"} onClick={() => setVista("aprobador")} type="button">Solicitudes pendientes</button>
+        </nav>
+      )}
+
+      {puedeSolicitar && vista === "solicitante" && <SolicitanteView scopes={scopes} />}
+      {puedeAprobar && vista === "aprobador" && <AprobadorView scopes={scopes} />}
+      {!puedeSolicitar && !puedeAprobar && (
+        <div className="alerta advertencia">No tienes un rol asignado para utilizar Pedidos360.</div>
+      )}
     </main>
   );
 }

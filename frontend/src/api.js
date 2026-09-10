@@ -1,13 +1,36 @@
-import { config, getAccessToken } from "./auth";
+import { getAccessToken } from "./auth";
 
-const region = import.meta.env.VITE_AWS_REGION;
 const apiUrl = import.meta.env.VITE_API_URL;
 
-async function solicitar(descripcion, url, opciones = {}) {
+function mensajePorEstado(status) {
+  const mensajes = {
+    400: "La solicitud contiene datos inválidos.",
+    401: "Tu sesión no es válida o ha expirado.",
+    403: "No tienes permisos para realizar esta operación.",
+    404: "La solicitud no fue encontrada.",
+  };
+  return mensajes[status] || `La API respondió con HTTP ${status}.`;
+}
+
+async function solicitar(method, path, body) {
+  const headers = { Authorization: `Bearer ${getAccessToken()}` };
+  const opciones = { method, headers, cache: "no-store" };
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    opciones.body = JSON.stringify(body);
+  }
+
   try {
-    const respuesta = await fetch(url, { cache: "no-store", ...opciones });
+    const respuesta = await fetch(`${apiUrl}${path}`, opciones);
+    if (respuesta.status === 204) {
+      if (!respuesta.ok) {
+        throw new Error(mensajePorEstado(respuesta.status));
+      }
+      return null;
+    }
+
     const texto = await respuesta.text();
-    let cuerpo = texto;
+    let cuerpo = null;
 
     if (texto) {
       try {
@@ -17,53 +40,59 @@ async function solicitar(descripcion, url, opciones = {}) {
       }
     }
 
-    return {
-      descripcion,
-      status: respuesta.status,
-      ok: respuesta.ok,
-      cuerpo,
-    };
+    if (!respuesta.ok) {
+      const detalle = typeof cuerpo === "object" ? cuerpo?.message || cuerpo?.error : cuerpo;
+      throw new Error(detalle || mensajePorEstado(respuesta.status));
+    }
+    return cuerpo;
   } catch (error) {
-    return {
-      descripcion,
-      status: null,
-      ok: false,
-      cuerpo: error instanceof Error ? error.message : "Error de red o CORS.",
-    };
+    if (error instanceof TypeError) {
+      throw new Error("No fue posible comunicarse con la API. Revisa la conexión o CORS.");
+    }
+    throw error;
   }
 }
 
-function opcionesConToken() {
-  return { headers: { Authorization: `Bearer ${getAccessToken()}` } };
+export function listarMisSolicitudes() {
+  return solicitar("GET", "/solicitudes/mias");
 }
 
-export function obtenerUserInfo() {
-  return solicitar(`${config.dominio}/oauth2/userInfo`, `${config.dominio}/oauth2/userInfo`, opcionesConToken());
+export function listarSolicitudesPendientes() {
+  return solicitar("GET", "/solicitudes/pendientes");
 }
 
-export function obtenerUsuarioCognito() {
-  return solicitar(
-    "Cognito GetUser",
-    `https://cognito-idp.${region}.amazonaws.com/`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-amz-json-1.1",
-        "X-Amz-Target": "AWSCognitoIdentityProviderService.GetUser",
-      },
-      body: JSON.stringify({ AccessToken: getAccessToken() }),
-    },
-  );
+export function obtenerSolicitud(id) {
+  return solicitar("GET", `/solicitudes/${encodeURIComponent(id)}`);
 }
 
-export function obtenerIndicadores(conToken = true) {
-  if (conToken) {
-    return solicitar("/datos con token", `${apiUrl}/datos`, opcionesConToken());
+export function crearSolicitud(datos) {
+  return solicitar("POST", "/solicitudes", {
+    tipo: datos.tipo,
+    fechaInicio: datos.fechaInicio,
+    fechaFin: datos.fechaFin,
+    motivo: datos.motivo,
+  });
+}
+
+export function actualizarSolicitud(id, datos) {
+  return solicitar("PUT", `/solicitudes/${encodeURIComponent(id)}`, {
+    tipo: datos.tipo,
+    fechaInicio: datos.fechaInicio,
+    fechaFin: datos.fechaFin,
+    motivo: datos.motivo,
+  });
+}
+
+export function eliminarSolicitud(id) {
+  return solicitar("DELETE", `/solicitudes/${encodeURIComponent(id)}`);
+}
+
+export function decidirSolicitud(id, decision, comentario) {
+  if (!["APROBADA", "RECHAZADA"].includes(decision)) {
+    throw new Error("La decisión debe ser APROBADA o RECHAZADA.");
   }
-
-  return solicitar("/datos sin token", `${apiUrl}/datos`);
-}
-
-export function obtenerIndicadoresPublicos() {
-  return solicitar("/publico/datos", `${apiUrl}/publico/datos`);
+  return solicitar("PATCH", `/solicitudes/${encodeURIComponent(id)}/decision`, {
+    decision,
+    comentario,
+  });
 }

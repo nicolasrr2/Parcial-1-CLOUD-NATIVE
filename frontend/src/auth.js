@@ -6,7 +6,7 @@ export const config = {
   dominio: import.meta.env.VITE_COGNITO_DOMAIN,
   clientId: import.meta.env.VITE_COGNITO_CLIENT_ID,
   redirectUri: import.meta.env.VITE_REDIRECT_URI,
-  scopes: "openid email profile aws.cognito.signin.user.admin",
+  scopes: "openid email profile",
 };
 
 export function validarConfiguracion() {
@@ -153,6 +153,39 @@ export function getAccessToken() {
 
 export function getIdToken() {
   return getTokens()?.id_token || null;
+}
+
+export function getAccessTokenClaims() {
+  const token = getAccessToken();
+  if (!token || estaExpirado(token)) {
+    return null;
+  }
+
+  return decodificarJwt(token);
+}
+
+export function getGroups() {
+  const grupos = getAccessTokenClaims()?.["cognito:groups"];
+  if (Array.isArray(grupos)) {
+    return grupos;
+  }
+  return typeof grupos === "string" ? grupos.split(" ").filter(Boolean) : [];
+}
+
+export function getScopes() {
+  const scope = getAccessTokenClaims()?.scope;
+  if (Array.isArray(scope)) {
+    return scope;
+  }
+  return typeof scope === "string" ? scope.split(" ").filter(Boolean) : [];
+}
+
+export function tieneGrupo(grupo) {
+  return getGroups().includes(grupo);
+}
+
+export function tieneScope(scope) {
+  return getScopes().includes(scope);
 }
 
 export function decodificarJwt(token) {
