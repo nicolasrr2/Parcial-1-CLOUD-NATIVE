@@ -80,8 +80,14 @@ resource "aws_cognito_user_pool_client" "spa" {
   supported_identity_providers         = ["COGNITO"]
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
 
-  callback_urls = ["http://localhost:5173/"]
-  logout_urls   = ["http://localhost:5173/"]
+  callback_urls = [
+    "http://localhost:5173/",
+    "https://main.${aws_amplify_app.frontend.default_domain}/"
+  ]
+  logout_urls = [
+    "http://localhost:5173/",
+    "https://main.${aws_amplify_app.frontend.default_domain}/"
+  ]
 
   access_token_validity  = 60
   id_token_validity      = 60

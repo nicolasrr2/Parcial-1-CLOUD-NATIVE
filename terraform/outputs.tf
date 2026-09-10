@@ -104,6 +104,21 @@ output "backend_log_group_name" {
   value = aws_cloudwatch_log_group.backend.name
 }
 
+output "frontend_url" {
+  description = "URL publica del frontend Pedidos360 desplegado en AWS Amplify"
+  value       = "https://main.${aws_amplify_app.frontend.default_domain}"
+}
+
+output "frontend_amplify_app_id" {
+  description = "ID de la aplicacion AWS Amplify de Pedidos360"
+  value       = aws_amplify_app.frontend.id
+}
+
+output "frontend_amplify_branch_name" {
+  description = "Rama productiva del frontend en AWS Amplify"
+  value       = aws_amplify_branch.main.branch_name
+}
+
 output "env_frontend" {
   description = "Variables para frontend/.env.local"
   value       = <<-EOT
@@ -111,6 +126,17 @@ VITE_AWS_REGION=us-east-1
 VITE_COGNITO_DOMAIN=https://${aws_cognito_user_pool_domain.domain.domain}.auth.us-east-1.amazoncognito.com
 VITE_COGNITO_CLIENT_ID=${aws_cognito_user_pool_client.spa.id}
 VITE_REDIRECT_URI=http://localhost:5173/
+VITE_API_URL=${aws_apigatewayv2_api.api_manager.api_endpoint}
+EOT
+}
+
+output "env_frontend_production" {
+  description = "Variables para compilar y desplegar el frontend en produccion"
+  value       = <<-EOT
+VITE_AWS_REGION=us-east-1
+VITE_COGNITO_DOMAIN=https://${aws_cognito_user_pool_domain.domain.domain}.auth.us-east-1.amazoncognito.com
+VITE_COGNITO_CLIENT_ID=${aws_cognito_user_pool_client.spa.id}
+VITE_REDIRECT_URI=https://main.${aws_amplify_app.frontend.default_domain}/
 VITE_API_URL=${aws_apigatewayv2_api.api_manager.api_endpoint}
 EOT
 }

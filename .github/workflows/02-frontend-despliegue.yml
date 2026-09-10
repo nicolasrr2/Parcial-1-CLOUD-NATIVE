@@ -1,0 +1,123 @@
+name: Frontend - Despliegue
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pedidos360-frontend-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-frontend:
+    name: Desplegar frontend en Amplify
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Compilar frontend productivo
+        env:
+          VITE_AWS_REGION: ${{ vars.AWS_REGION }}
+          VITE_COGNITO_DOMAIN: ${{ vars.VITE_COGNITO_DOMAIN }}
+          VITE_COGNITO_CLIENT_ID: ${{ vars.VITE_COGNITO_CLIENT_ID }}
+          VITE_REDIRECT_URI: ${{ vars.VITE_REDIRECT_URI }}
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+        run: npm run build
+
+      - name: Verificar compilación
+        run: test -f dist/index.html
+
+      - name: Crear ZIP para Amplify
+        run: zip -r ../frontend-amplify.zip .
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Crear deployment Amplify
+        id: amplify-deployment
+        working-directory: .
+        env:
+          AMPLIFY_APP_ID: ${{ vars.AMPLIFY_APP_ID }}
+          AMPLIFY_BRANCH: ${{ vars.AMPLIFY_BRANCH }}
+        run: |
+          set -euo pipefail
+          RESPONSE=$(aws amplify create-deployment \
+            --app-id "$AMPLIFY_APP_ID" \
+            --branch-name "$AMPLIFY_BRANCH" \
+            --output json)
+          echo "job_id=$(jq -r '.jobId' <<< "$RESPONSE")" >> "$GITHUB_OUTPUT"
+          echo "zip_upload_url=$(jq -r '.zipUploadUrl' <<< "$RESPONSE")" >> "$GITHUB_OUTPUT"
+
+      - name: Subir ZIP a Amplify
+        env:
+          ZIP_UPLOAD_URL: ${{ steps.amplify-deployment.outputs.zip_upload_url }}
+        run: curl --fail-with-body --silent --show-error --request PUT --upload-file frontend-amplify.zip --header "Content-Type: application/zip" "$ZIP_UPLOAD_URL"
+
+      - name: Iniciar deployment Amplify
+        env:
+          AMPLIFY_APP_ID: ${{ vars.AMPLIFY_APP_ID }}
+          AMPLIFY_BRANCH: ${{ vars.AMPLIFY_BRANCH }}
+          JOB_ID: ${{ steps.amplify-deployment.outputs.job_id }}
+        run: aws amplify start-deployment --app-id "$AMPLIFY_APP_ID" --branch-name "$AMPLIFY_BRANCH" --job-id "$JOB_ID"
+
+      - name: Esperar resultado de Amplify
+        env:
+          AMPLIFY_APP_ID: ${{ vars.AMPLIFY_APP_ID }}
+          AMPLIFY_BRANCH: ${{ vars.AMPLIFY_BRANCH }}
+          JOB_ID: ${{ steps.amplify-deployment.outputs.job_id }}
+        run: |
+          set -euo pipefail
+          for attempt in {1..60}; do
+            STATUS=$(aws amplify get-job \
+              --app-id "$AMPLIFY_APP_ID" \
+              --branch-name "$AMPLIFY_BRANCH" \
+              --job-id "$JOB_ID" \
+              --query 'job.summary.status' \
+              --output text)
+            echo "Estado Amplify: $STATUS"
+            case "$STATUS" in
+              SUCCEED) exit 0 ;;
+              FAILED|CANCELLED) echo "Deployment Amplify terminó en $STATUS"; exit 1 ;;
+              PENDING|RUNNING) sleep 5 ;;
+              *) echo "Estado Amplify desconocido: $STATUS"; exit 1 ;;
+            esac
+          done
+          echo "Tiempo de espera agotado para Amplify"
+          exit 1
+
+      - name: Probar URL pública
+        env:
+          FRONTEND_URL: ${{ vars.VITE_REDIRECT_URI }}
+        run: curl --fail --silent --show-error --location --output /dev/null "$FRONTEND_URL"
+
+      - name: Mostrar resumen
+        env:
+          JOB_ID: ${{ steps.amplify-deployment.outputs.job_id }}
+          FRONTEND_URL: ${{ vars.VITE_REDIRECT_URI }}
+        run: |
+          echo "Frontend desplegado correctamente."
+          echo "URL producción: $FRONTEND_URL"
+          echo "Job Amplify: $JOB_ID"
+          echo "Commit SHA: $GITHUB_SHA"

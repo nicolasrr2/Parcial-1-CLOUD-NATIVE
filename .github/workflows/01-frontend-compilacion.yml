@@ -1,0 +1,56 @@
+name: Frontend - Compilación
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "frontend/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-frontend:
+    name: Compilar frontend React
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Compilar frontend
+        env:
+          VITE_AWS_REGION: ${{ vars.AWS_REGION }}
+          VITE_COGNITO_DOMAIN: ${{ vars.VITE_COGNITO_DOMAIN }}
+          VITE_COGNITO_CLIENT_ID: ${{ vars.VITE_COGNITO_CLIENT_ID }}
+          VITE_REDIRECT_URI: ${{ vars.VITE_REDIRECT_URI }}
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+        run: npm run build
+
+      - name: Verificar artefacto compilado
+        run: test -f dist/index.html
+
+      - name: Subir compilación frontend
+        uses: actions/upload-artifact@v4
+        with:
+          name: pedidos360-frontend-build
+          path: frontend/dist
+          if-no-files-found: error

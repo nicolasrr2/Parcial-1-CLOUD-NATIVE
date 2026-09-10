@@ -1,0 +1,114 @@
+name: Backend - Despliegue
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pedidos360-backend-production
+  cancel-in-progress: false
+
+jobs:
+  deploy-backend:
+    name: Desplegar backend en ECS
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Java 17 Temurin
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Compilar, probar y empaquetar backend
+        working-directory: backend
+        run: mvn -B clean verify
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Iniciar sesión en ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Construir imagen backend
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --tag "$REGISTRY/$ECR_REPOSITORY:latest" \
+            --tag "$REGISTRY/$ECR_REPOSITORY:$IMAGE_SHA" \
+            --file backend/Dockerfile \
+            backend
+
+      - name: Publicar imágenes en ECR
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          IMAGE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker push "$REGISTRY/$ECR_REPOSITORY:latest"
+          docker push "$REGISTRY/$ECR_REPOSITORY:$IMAGE_SHA"
+
+      - name: Forzar nuevo deployment ECS
+        env:
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --force-new-deployment
+
+      - name: Esperar servicio ECS estable
+        env:
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+        run: aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
+
+      - name: Verificar tareas ECS
+        env:
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+        run: |
+          set -euo pipefail
+          SERVICE=$(aws ecs describe-services \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --output json)
+          echo "$SERVICE" | jq '.services[0] | {desiredCount, runningCount, pendingCount}'
+          DESIRED=$(echo "$SERVICE" | jq -r '.services[0].desiredCount')
+          RUNNING=$(echo "$SERVICE" | jq -r '.services[0].runningCount')
+          PENDING=$(echo "$SERVICE" | jq -r '.services[0].pendingCount')
+          if [[ "$RUNNING" != "$DESIRED" || "$PENDING" != "0" ]]; then
+            echo "ECS no alcanzó el estado esperado"
+            exit 1
+          fi
+
+      - name: Mostrar resumen
+        env:
+          IMAGE_SHA: ${{ github.sha }}
+          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+          ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+        run: |
+          echo "Imagen desplegada: $IMAGE_SHA"
+          echo "SHA: $GITHUB_SHA"
+          echo "Cluster: $ECS_CLUSTER"
+          echo "Service: $ECS_SERVICE"
+          echo "Running/Desired verificados correctamente."
