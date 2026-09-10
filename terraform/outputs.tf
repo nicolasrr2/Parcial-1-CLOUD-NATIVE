@@ -48,6 +48,16 @@ output "cognito_pre_token_generation_lambda" {
   value       = aws_lambda_function.user_token_ms.function_name
 }
 
+output "ecr_backend_repository_url" {
+  description = "URL del repositorio ECR del backend"
+  value       = aws_ecr_repository.backend.repository_url
+}
+
+output "ecr_backend_repository_name" {
+  description = "Nombre del repositorio ECR del backend"
+  value       = aws_ecr_repository.backend.name
+}
+
 output "env_frontend" {
   description = "Variables para frontend/.env.local"
   value       = <<-EOT
