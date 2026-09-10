@@ -82,6 +82,38 @@ output "rds_security_group_id" {
   value = aws_security_group.database.id
 }
 
+output "ecs_cluster_name" {
+  value = aws_ecs_cluster.backend.name
+}
+
+output "ecs_service_name" {
+  value = aws_ecs_service.backend.name
+}
+
+output "ecs_task_definition_arn" {
+  value = aws_ecs_task_definition.backend.arn
+}
+
+output "alb_internal_dns" {
+  value = aws_lb.backend.dns_name
+}
+
+output "alb_listener_arn" {
+  value = aws_lb_listener.backend.arn
+}
+
+output "alb_target_group_arn" {
+  value = aws_lb_target_group.backend.arn
+}
+
+output "apigw_vpc_link_security_group_id" {
+  value = aws_security_group.apigw_vpc_link.id
+}
+
+output "backend_log_group_name" {
+  value = aws_cloudwatch_log_group.backend.name
+}
+
 output "env_frontend" {
   description = "Variables para frontend/.env.local"
   value       = <<-EOT
