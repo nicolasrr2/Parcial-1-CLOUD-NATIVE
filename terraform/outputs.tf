@@ -3,16 +3,6 @@ output "api_url" {
   value       = aws_apigatewayv2_api.api_manager.api_endpoint
 }
 
-output "url_datos" {
-  description = "URL del endpoint protegido"
-  value       = "${aws_apigatewayv2_api.api_manager.api_endpoint}/datos"
-}
-
-output "url_publico" {
-  description = "URL del endpoint publico"
-  value       = "${aws_apigatewayv2_api.api_manager.api_endpoint}/publico/datos"
-}
-
 output "cognito_user_pool_id" {
   description = "ID del grupo de usuarios de Cognito"
   value       = aws_cognito_user_pool.pool.id
