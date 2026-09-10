@@ -1,0 +1,45 @@
+output "api_url" {
+  description = "Endpoint base de API Gateway"
+  value       = aws_apigatewayv2_api.api_manager.api_endpoint
+}
+
+output "url_datos" {
+  description = "URL del endpoint protegido"
+  value       = "${aws_apigatewayv2_api.api_manager.api_endpoint}/datos"
+}
+
+output "url_publico" {
+  description = "URL del endpoint publico"
+  value       = "${aws_apigatewayv2_api.api_manager.api_endpoint}/publico/datos"
+}
+
+output "cognito_user_pool_id" {
+  description = "ID del grupo de usuarios de Cognito"
+  value       = aws_cognito_user_pool.pool.id
+}
+
+output "cognito_client_id" {
+  description = "ID del cliente publico de Cognito"
+  value       = aws_cognito_user_pool_client.spa.id
+}
+
+output "cognito_domain" {
+  description = "Dominio completo de Cognito Hosted UI"
+  value       = "https://${aws_cognito_user_pool_domain.domain.domain}.auth.us-east-1.amazoncognito.com"
+}
+
+output "cognito_issuer" {
+  description = "Emisor de tokens JWT de Cognito"
+  value       = "https://cognito-idp.us-east-1.amazonaws.com/${aws_cognito_user_pool.pool.id}"
+}
+
+output "env_frontend" {
+  description = "Variables para frontend/.env.local"
+  value       = <<-EOT
+VITE_AWS_REGION=us-east-1
+VITE_COGNITO_DOMAIN=https://${aws_cognito_user_pool_domain.domain.domain}.auth.us-east-1.amazoncognito.com
+VITE_COGNITO_CLIENT_ID=${aws_cognito_user_pool_client.spa.id}
+VITE_REDIRECT_URI=http://localhost:5173/
+VITE_API_URL=${aws_apigatewayv2_api.api_manager.api_endpoint}
+EOT
+}
