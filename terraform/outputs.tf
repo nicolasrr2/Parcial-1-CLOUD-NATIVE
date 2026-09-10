@@ -58,6 +58,30 @@ output "ecr_backend_repository_name" {
   value       = aws_ecr_repository.backend.name
 }
 
+output "rds_endpoint" {
+  value = aws_db_instance.postgres.address
+}
+
+output "rds_port" {
+  value = aws_db_instance.postgres.port
+}
+
+output "rds_database_name" {
+  value = aws_db_instance.postgres.db_name
+}
+
+output "rds_username" {
+  value = aws_db_instance.postgres.username
+}
+
+output "backend_security_group_id" {
+  value = aws_security_group.backend.id
+}
+
+output "rds_security_group_id" {
+  value = aws_security_group.database.id
+}
+
 output "env_frontend" {
   description = "Variables para frontend/.env.local"
   value       = <<-EOT
