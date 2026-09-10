@@ -45,7 +45,17 @@ jobs:
         run: test -f dist/index.html
 
       - name: Crear ZIP para Amplify
-        run: zip -r ../frontend-amplify.zip .
+        working-directory: frontend/dist
+        run: |
+          set -euo pipefail
+          zip -r ../../frontend-amplify.zip .
+
+      - name: Verificar paquete Amplify
+        working-directory: .
+        run: |
+          set -euo pipefail
+          unzip -l frontend-amplify.zip
+          unzip -l frontend-amplify.zip | grep -q "index.html"
 
       - name: Configurar credenciales AWS
         uses: aws-actions/configure-aws-credentials@v4
@@ -71,9 +81,16 @@ jobs:
           echo "zip_upload_url=$(jq -r '.zipUploadUrl' <<< "$RESPONSE")" >> "$GITHUB_OUTPUT"
 
       - name: Subir ZIP a Amplify
+        working-directory: .
         env:
           ZIP_UPLOAD_URL: ${{ steps.amplify-deployment.outputs.zip_upload_url }}
-        run: curl --fail-with-body --silent --show-error --request PUT --upload-file frontend-amplify.zip --header "Content-Type: application/zip" "$ZIP_UPLOAD_URL"
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error \
+            --request PUT \
+            --upload-file frontend-amplify.zip \
+            --header "Content-Type: application/zip" \
+            "$ZIP_UPLOAD_URL"
 
       - name: Iniciar deployment Amplify
         env:
