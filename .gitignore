@@ -12,6 +12,12 @@ frontend/.env
 frontend/.env.local
 frontend/.env.*.local
 
+# Spring Boot backend
+backend/target/
+*.log
+.env
+backend/.env
+
 # OS/editor
 .DS_Store
 Thumbs.db
