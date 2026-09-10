@@ -64,7 +64,7 @@ resource "aws_cognito_user_group" "aprobadores" {
 
 # Dominio clasico de Hosted UI de Cognito.
 resource "aws_cognito_user_pool_domain" "domain" {
-  domain                = "dsy1107-romo3219801"
+  domain                = "dsy1107-romo3219801-${lower(replace(aws_cognito_user_pool.pool.id, "_", "-"))}"
   user_pool_id          = aws_cognito_user_pool.pool.id
   managed_login_version = 1
 }
