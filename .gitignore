@@ -4,6 +4,7 @@
 *.tfstate.*
 *.tfvars
 crash.log
+terraform/lambda/*.zip
 
 # React/Vite
 frontend/node_modules/

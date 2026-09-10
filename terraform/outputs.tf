@@ -33,6 +33,21 @@ output "cognito_issuer" {
   value       = "https://cognito-idp.us-east-1.amazonaws.com/${aws_cognito_user_pool.pool.id}"
 }
 
+output "cognito_group_solicitantes" {
+  description = "Nombre del grupo Cognito de solicitantes"
+  value       = aws_cognito_user_group.solicitantes.name
+}
+
+output "cognito_group_aprobadores" {
+  description = "Nombre del grupo Cognito de aprobadores"
+  value       = aws_cognito_user_group.aprobadores.name
+}
+
+output "cognito_pre_token_generation_lambda" {
+  description = "Nombre de la Lambda Pre Token Generation"
+  value       = aws_lambda_function.user_token_ms.function_name
+}
+
 output "env_frontend" {
   description = "Variables para frontend/.env.local"
   value       = <<-EOT
