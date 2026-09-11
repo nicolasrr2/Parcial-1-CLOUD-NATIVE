@@ -71,33 +71,40 @@ jobs:
           ECS_SERVICE: ${{ vars.ECS_SERVICE }}
         run: |
           set -euo pipefail
-          aws ecs update-service \
+          RESPONSE=$(aws ecs update-service \
             --cluster "$ECS_CLUSTER" \
             --service "$ECS_SERVICE" \
-            --force-new-deployment
-
-      - name: Esperar servicio ECS estable
-        env:
-          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
-          ECS_SERVICE: ${{ vars.ECS_SERVICE }}
-        run: aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE"
-
-      - name: Verificar tareas ECS
-        env:
-          ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
-          ECS_SERVICE: ${{ vars.ECS_SERVICE }}
-        run: |
-          set -euo pipefail
-          SERVICE=$(aws ecs describe-services \
-            --cluster "$ECS_CLUSTER" \
-            --services "$ECS_SERVICE" \
+            --force-new-deployment \
             --output json)
-          echo "$SERVICE" | jq '.services[0] | {desiredCount, runningCount, pendingCount}'
-          DESIRED=$(echo "$SERVICE" | jq -r '.services[0].desiredCount')
-          RUNNING=$(echo "$SERVICE" | jq -r '.services[0].runningCount')
-          PENDING=$(echo "$SERVICE" | jq -r '.services[0].pendingCount')
-          if [[ "$RUNNING" != "$DESIRED" || "$PENDING" != "0" ]]; then
-            echo "ECS no alcanzó el estado esperado"
+
+          SERVICE_STATUS=$(jq -r '.service.status // ""' <<< "$RESPONSE")
+          DESIRED_COUNT=$(jq -r '.service.desiredCount // ""' <<< "$RESPONSE")
+          RUNNING_COUNT=$(jq -r '.service.runningCount // ""' <<< "$RESPONSE")
+          PENDING_COUNT=$(jq -r '.service.pendingCount // ""' <<< "$RESPONSE")
+          TASK_DEFINITION=$(jq -r '.service.taskDefinition // ""' <<< "$RESPONSE")
+          PRIMARY_COUNT=$(jq '[.service.deployments[]? | select(.status == "PRIMARY")] | length' <<< "$RESPONSE")
+          PRIMARY_ROLLOUT=$(jq -r '[.service.deployments[]? | select(.status == "PRIMARY") | .rolloutState][0] // ""' <<< "$RESPONSE")
+
+          echo "Estado del servicio: $SERVICE_STATUS"
+          echo "Desired: $DESIRED_COUNT"
+          echo "Running: $RUNNING_COUNT"
+          echo "Pending: $PENDING_COUNT"
+          echo "Task definition: $TASK_DEFINITION"
+          echo "Deployments PRIMARY: $PRIMARY_COUNT"
+          echo "Rollout PRIMARY: $PRIMARY_ROLLOUT"
+
+          if [[ "$SERVICE_STATUS" != "ACTIVE" ]]; then
+            echo "ECS no aceptó un servicio ACTIVE"
+            exit 1
+          fi
+
+          if [[ "$PRIMARY_COUNT" -lt 1 ]]; then
+            echo "ECS no devolvió un deployment PRIMARY"
+            exit 1
+          fi
+
+          if [[ "$PRIMARY_ROLLOUT" != "IN_PROGRESS" && "$PRIMARY_ROLLOUT" != "COMPLETED" ]]; then
+            echo "Rollout PRIMARY inválido: $PRIMARY_ROLLOUT"
             exit 1
           fi
 
@@ -107,8 +114,9 @@ jobs:
           ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
           ECS_SERVICE: ${{ vars.ECS_SERVICE }}
         run: |
-          echo "Imagen desplegada: $IMAGE_SHA"
+          echo "Imagen publicada en ECR correctamente: $IMAGE_SHA"
+          echo "Deployment solicitado y aceptado por ECS."
           echo "SHA: $GITHUB_SHA"
           echo "Cluster: $ECS_CLUSTER"
           echo "Service: $ECS_SERVICE"
-          echo "Running/Desired verificados correctamente."
+          echo "La verificación posterior de estabilidad mediante DescribeServices se omite porque AWS Academy aplica un explicit deny a ecs:DescribeServices."
